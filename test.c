@@ -1,30 +1,49 @@
-#include "BE.h"
+#include "BE_v2.h"
 
 void *Th1(void *arg)
 {
-    /*char message[5];*/
-    aboMsg(1);
-    sleep(10);
-    sendMsg(1,2,"Bonjour, je m'appelle 1");
-    /*recvMsg(1, message, "RECEV");*/
+    char message[20];
+    int ident=1;
+    aboMsg(ident);
+    sleep(1);
+    sendMsg(ident,2,"Bonjour, je m'appelle");
+    sendMsg(ident,2,"Th1");
+
+    recvMsg(ident, message, "RECEV");
+    printf("Le message 3 est : %s \n", message);
+
+    recvMsg(ident, message, "RECEV");
+    printf("Le message 4 est : %s \n", message);
+
     pthread_exit(NULL);
 };
 
 void *Th2(void *arg)
 {
-    char message[5];
-    aboMsg(2);
-    sleep(5);
-    recvMsg(2, message, "RECEV");
-    sleep(5);
-    /*sendMsg(2,1,"Bonjour 1 je suis 2 j'ai bien reçu votre message");*/
-    recvMsg(2, message, "COUNT");
+    char message[20];
+    int ident=2;
+    aboMsg(ident);
+
+    recvMsg(ident, message, "RECEV");
+    printf("Le message 1 est : %s \n", message);
+
+    recvMsg(ident, message, "COUNT");
+    printf("Nombre de messages dans la BAL : %s \n", message);
+
+    recvMsg(ident, message, "RECEV");
+    printf("Le message 2 est : %s \n", message);
+
+    recvMsg(ident, message, "COUNT");
+    printf("Nombre de messages dans la BAL : %s \n", message);
+
+    sendMsg(ident,1,"Et moi je m'appelle");
+    sendMsg(ident,1,"Th2");
 
     pthread_exit(NULL);
 };
 
 
-/*int main()
+int main()
 {
     initMsg(10);
     sleep(1);
@@ -49,16 +68,17 @@ void *Th2(void *arg)
     {
         sleep(1);
     }
-    finMsg("FORCE");
+    //finMsg("FORCE");
     return 0;
-};*/
-
+};
+/*
 int main()
 {
     printf("Init...\n");
     initMsg(50);
     sleep(1);
     aboMsg(10);
+	printf("envoi 2\n");
     aboMsg(20);
     char message[5];
     sendMsg(10,20,"Bonjour, je m'appelle 1");
@@ -67,5 +87,5 @@ int main()
     recvMsg(20, message, "COUNT");
     pthread_join(idThGest, NULL);
     return 0;
-};
+};*/
 
