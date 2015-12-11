@@ -11,6 +11,7 @@
 #define message_len 80
 
 
+//structures de données
 struct bal
 {
     char ident;
@@ -37,38 +38,28 @@ typedef struct
     char msg[message_len];
     struct reponse* reponse;
 } Requete;
+//fin
 
+
+//variables globales
 char _none;
 int _lance = 0;
 Requete _requete;
 //int _nb_abo_courant = 0;
 sem_t _nb_max_abo;
 struct bal _liste_bal[nb_limite_abo];
+pthread_t idThGest;
+//fin
 
 
-
-pthread_cond_t _cabo = PTHREAD_COND_INITIALIZER;
-pthread_cond_t _cmsg = PTHREAD_COND_INITIALIZER;
-pthread_cond_t _crcp = PTHREAD_COND_INITIALIZER;
-pthread_cond_t _cdesabo = PTHREAD_COND_INITIALIZER;
-pthread_cond_t _cfin = PTHREAD_COND_INITIALIZER;
-pthread_cond_t _crcpb = PTHREAD_COND_INITIALIZER;
-
-pthread_mutex_t _mutex_cabo = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_cmsg = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_crcp = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_crcpb = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_cdesabo= PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_cfin= PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t _mutex_bal= PTHREAD_MUTEX_INITIALIZER;
-
-//initialisation des mutexs de ressource
+//initialisation des mutexs de ressources critiques
 
 pthread_mutex_t _mutex_requete = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t _mutex_bal_list = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t _mutex_ecran = PTHREAD_MUTEX_INITIALIZER;
 
 //fin
+
 
 //initialisation des variables conditionnelles et de leurs mutexs associées
 
@@ -96,9 +87,11 @@ pthread_cond_t _c_reponse_count = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t _mutex_c_reponse_count = PTHREAD_MUTEX_INITIALIZER;
 int _c_r_c = 0;
 
-//fin
+pthread_cond_t _c_reponse_desabo = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t _mutex_c_reponse_desabo = PTHREAD_MUTEX_INITIALIZER;
+int _c_r_ds = 0;
 
-pthread_t idThGest;
+//fin
 
 
 void signal(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition)
@@ -283,22 +276,29 @@ void *ThRcp2(void *arg)
     pthread_exit(NULL);
 };
 
-/*
+
 void *ThDesabo(void *arg)
 {
     Requete requete = *(&_requete);
-    signal(&_mutex_cr, &_crequete, &_ecri_requete, 0);
+    signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
+
     int i;
-    for (i = indice(requete.idente, _liste_bal); i < _nb_abo_courant; i++)
+	pthread_mutex_lock(&_mutex_bal_list); // mutex pour l'accès à la liste des boîtes aux lettres
+    int j = indice_libre(_liste_bal);
+    for (i = indice(requete.idente, _liste_bal); i < j ; i++)
     {
         _liste_bal[i] = _liste_bal[i+1];
     }
-    _nb_abo_courant --;
+    _liste_bal[j].used = 0;
+	pthread_mutex_unlock(&_mutex_bal_list); // fin mutex
+	sem_post(&_nb_max_abo);
+
     requete.reponse -> code_ret = 0;
     strcpy( (*requete.reponse).msg, "Thread désabonné avec succès\n");
-    signal(&_mutex_cdesabo, &_cdesabo, &_ecri_cdesabo, 1);
+    signal(&_c_reponse_desabo, &_mutex_c_reponse_desabo, &_c_r_ds);
+
     pthread_exit(NULL);
-};*/
+};
 
 
 void *ThGest()
@@ -407,15 +407,15 @@ void *ThGest()
 				signal(&_c_reponse_count, &_mutex_c_reponse_count, &_c_r_c);
             }
         }
-/*
+
         if (_requete.type == 5)
         {
             if (dans(_requete.idente, _liste_bal) == 0)
             {
                 (_requete.reponse) -> code_ret = -1;
-                strcpy( (*_requete.reponse).msg, "Identifiant inexistant\n");
-                signal(&_mutex_cabo, &_cabo, &_ecri_cabo, 1);
-                signal(&_mutex_cr, &_crequete, &_ecri_requete, 0);
+				strcpy( (*_requete.reponse).msg, "Le thread n'est pas abonné\n");
+                signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
+				signal(&_c_reponse_desabo, &_mutex_c_reponse_desabo, &_c_r_ds);
             }
             else
             {
@@ -423,14 +423,16 @@ void *ThGest()
                 pthread_attr_t attr;
                 pthread_attr_init(&attr);
                 pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-                if ( pthread_create(&idThDesabo, &attr, ThDesabo, NULL)!=0 ) //PTHREAD_CREATE_DETACHED à rajouter !!
+                if ( pthread_create(&idThDesabo, &attr, ThDesabo, NULL)!=0 )
                 {
-                    printf("Erreur lors de la création de la tâche abonnement\n");
-                    signal(&_mutex_cr, &_crequete, &_ecri_requete, 0);
+					(_requete.reponse) -> code_ret = -1;
+					strcpy( (*_requete.reponse).msg, "Erreur lors de la création de la tâche abonnement\n");
+                	signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
+					signal(&_c_reponse_desabo, &_mutex_c_reponse_desabo, &_c_r_ds);
                 }
             }
         }
-
+/*
         if (_requete.type == 6)
         {
             _lance = 0;
@@ -561,36 +563,28 @@ int recvMsg(int identifiant, char message[message_len], char flag[5])
 };
 
 
-/*
 int desaboMsg(int identifiant)
 {
+	int retour = -1;
     if (_lance == 0)
     {
         printf("Le serveur n'est pas lancé\n");
-        return -1;
     }
     else
-    {
-        if (_nb_abo_courant == 0)
-        {
-            printf("Aucun abonné au service\n");
-            return -1;
-        }
-        else
-        {
-            wait(&_mutex_cr, &_crequete, &_ecri_requete, 1, -1);
-            struct reponse repo_desabo;
-            sendreq(5, &_requete, &repo_desabo, identifiant, _none, "");
-            signal(&_mutex_cr, &_crequete, &_ecri_requete, 1);
-            printf("Attend la reponse de desabo...\n");
-            wait(&_mutex_cdesabo, &_cdesabo, &_ecri_cdesabo, 0, 0);
-            printf("code retour : %d, Message : %s \n", repo_desabo.code_ret, repo_desabo.msg);
-        }
+    {	
+		struct reponse repo_desabo;
+        
+		echange(5, &repo_desabo, identifiant, _none, "", &_c_reponse_desabo, &_mutex_c_reponse_desabo, &_c_r_ds);
+        
+        printf("code retour : %d, Message : %s \n", repo_desabo.code_ret, repo_desabo.msg);
+		retour = repo_desabo.code_ret; // récupère le code retour
+        
     }
-    return 0;
+    return retour;
 };
 
 
+/*
 int finMsg(char flag[5]) //CLEAN FORCED
 {
     if (_lance == 0)

@@ -39,6 +39,8 @@ void *Th2(void *arg)
     sendMsg(ident,1,"Et moi je m'appelle");
     sendMsg(ident,1,"Th2");
 
+    desaboMsg(ident);
+
     pthread_exit(NULL);
 };
 
