@@ -94,7 +94,7 @@ int _c_r_ds = 0;
 //fin
 
 
-void signal(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition)
+void signal(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition) // fonction d'envoi d'un signal (factorisation)
 {
     pthread_mutex_lock(mutex);
     (*condition) = 1;
@@ -103,7 +103,7 @@ void signal(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition)
 };
 
 
-void wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition)
+void wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition) // fonction d'attente d'un signal (factorisation)
 {
     pthread_mutex_lock(mutex);
     while (!*condition)
@@ -113,12 +113,12 @@ void wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int *condition)
 };
 
 
-int dans(char element, struct bal *liste)
+int dans(char element, struct bal *liste) // teste s'il existe déjà une boîte aux lettres dont l'identifiant est celui passé en paramètre
 {
     int i = 0;
-    while (liste[i].used)
+    while (i<nb_limite_abo)
 	{
-        if (element == (liste[i].ident))
+        if ( (element == (liste[i].ident)) && (liste[i].used == 1) )
         {
             return 1;
         }
@@ -127,10 +127,10 @@ int dans(char element, struct bal *liste)
 	return 0;
 };
 
-int indice(char idente, struct bal *liste)
+int indice(char idente, struct bal *liste) // renvoie l'indice d'une boîte aux lettres d'un abonné à partir de sont identifiant (inutile ?)
 {
     int i = 0;
-    while (liste[i].used)
+    while (i<nb_limite_abo)
 	{
         if (idente == (liste[i].ident))
         {
@@ -138,28 +138,33 @@ int indice(char idente, struct bal *liste)
         }
 		i++;
 	}
-    return -1;
+    return -1; // renvoie -1 si l'abonné n'existe pas
 }
 
-int indice_libre(struct bal *liste)
+int indice_libre(struct bal *liste) // renvoie la valeur de l'indice de la première boîte aux lettres libre
 {
     int i = 0;
-    while (liste[i].used)
+    while (i<nb_limite_abo)
 	{
+		if (liste[i].used == 0)
+        {
+            return i;
+        }
 		i++;
 	}
-    return i;
+    return -1; // renvoie -1 s'il n'y a pas de place (ne doit pas arriver normalement grâce aux sémaphores)
 }
 
-struct bal* addbal (char element, struct bal *liste)
+struct bal* addbal (char element, struct bal *liste) // renvoie l'adresse mémoire d'une boîte aux lettres d'un abonné à partir de sont identifiant
 {
     struct bal* retour;
     int i = 0;
-    while (liste[i].used)
+    while (i<nb_limite_abo)
 	{
         if (element == (liste[i].ident))
         {
             retour = &(liste[i]);
+            break;
         }
 		i++;
 	}
@@ -189,7 +194,7 @@ void echange(int reqtype, struct reponse * reponse, char idente, char identd, ch
 
 void *ThAbo(void *arg)
 {
-	Requete requete = *(&_requete);
+	Requete requete = _requete;
 	signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 
 	pthread_mutex_lock(&_mutex_bal_list); // mutex pour l'accès en écriture à la liste des boîtes aux lettres
@@ -203,7 +208,7 @@ void *ThAbo(void *arg)
 	pthread_mutex_unlock(&_mutex_bal_list); // fin mutex
     
 	requete.reponse -> code_ret = 0;
-    strcpy((*requete.reponse).msg, "Thread abonné avec succès\n");
+    strcpy( (*requete.reponse).msg, "Thread abonné avec succès\n");
     signal(&_c_reponse_abo, &_mutex_c_reponse_abo, &_c_r_a);
 
 	pthread_exit(NULL);
@@ -212,7 +217,7 @@ void *ThAbo(void *arg)
 
 void *ThMsg(void *arg)
 {
-    Requete requete = *(&_requete);
+    Requete requete = _requete;
     signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 
     struct bal* bal;
@@ -237,7 +242,7 @@ void *ThMsg(void *arg)
 
 void *ThRcp(void *arg)
 {
-    Requete requete = *(&_requete);
+    Requete requete = _requete;
     signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 
     struct bal* bal;
@@ -261,7 +266,7 @@ void *ThRcp(void *arg)
 
 void *ThRcp2(void *arg)
 {
-    Requete requete = *(&_requete);
+    Requete requete = _requete;
     signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 
 	pthread_mutex_lock(&_mutex_bal_list); // mutex pour l'accès à la liste des boîtes aux lettres
@@ -279,16 +284,11 @@ void *ThRcp2(void *arg)
 
 void *ThDesabo(void *arg)
 {
-    Requete requete = *(&_requete);
+    Requete requete = _requete;
     signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 
-    int i;
 	pthread_mutex_lock(&_mutex_bal_list); // mutex pour l'accès à la liste des boîtes aux lettres
     int j = indice_libre(_liste_bal);
-    for (i = indice(requete.idente, _liste_bal); i < j ; i++)
-    {
-        _liste_bal[i] = _liste_bal[i+1];
-    }
     _liste_bal[j].used = 0;
 	pthread_mutex_unlock(&_mutex_bal_list); // fin mutex
 	sem_post(&_nb_max_abo);
@@ -426,7 +426,7 @@ void *ThGest()
                 if ( pthread_create(&idThDesabo, &attr, ThDesabo, NULL)!=0 )
                 {
 					(_requete.reponse) -> code_ret = -1;
-					strcpy( (*_requete.reponse).msg, "Erreur lors de la création de la tâche abonnement\n");
+					strcpy( (*_requete.reponse).msg, "Erreur lors de la création de la tâche désabonnement\n");
                 	signal(&_c_requete_libre, &_mutex_c_requete_libre, &_c_r_l);
 					signal(&_c_reponse_desabo, &_mutex_c_reponse_desabo, &_c_r_ds);
                 }
